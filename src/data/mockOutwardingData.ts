@@ -114,6 +114,33 @@ export const mockOutwardRequests: OutwardRequest[] = [
 ];
 
 export const mockOutwardBoxes: Record<string, OutwardBox[]> = {
+  "OR-2024-001": [
+    {
+      id: "BX-OUT-001A",
+      requestId: "OR-2024-001",
+      status: "OPEN",
+      createdAt: "2024-01-15T09:15:00Z",
+      label: "Box 1",
+      items: [
+        { sku: "SKU-101", qty: 5, scannedAt: "2024-01-15T09:20:00Z" },
+        { sku: "SKU-102", qty: 3, scannedAt: "2024-01-15T09:22:00Z" },
+        { sku: "SKU-103", qty: 4, scannedAt: "2024-01-15T09:25:00Z" },
+        { sku: "SKU-104", qty: 8, scannedAt: "2024-01-15T09:28:00Z" }
+      ]
+    },
+    {
+      id: "BX-OUT-001B",
+      requestId: "OR-2024-001",
+      status: "CLOSED",
+      createdAt: "2024-01-15T09:00:00Z",
+      closedAt: "2024-01-15T10:30:00Z",
+      label: "Box 2",
+      items: [
+        { sku: "SKU-101", qty: 6, scannedAt: "2024-01-15T09:05:00Z" },
+        { sku: "SKU-105", qty: 4, scannedAt: "2024-01-15T09:10:00Z" }
+      ]
+    }
+  ],
   "OR-2024-002": [
     {
       id: "BX-OUT-001",
