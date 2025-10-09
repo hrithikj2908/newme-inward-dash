@@ -29,8 +29,8 @@ export default function OutwardRequestDetail() {
   const statusMap: Record<OutwardRequestStatus, "pending" | "in-transit" | "completed" | "inwarding"> = {
     PENDING: "pending",
     IN_PROGRESS: "inwarding",
-    COMPLETED: "completed",
-    IN_TRANSIT: "in-transit"
+    OUTWARDING_COMPLETED: "completed",
+    MOVED: "in-transit"
   };
 
   return (
@@ -155,7 +155,7 @@ export default function OutwardRequestDetail() {
           <Button
             size="lg"
             onClick={() => navigate(`/outwarding/${requestId}/workspace`)}
-            disabled={request.status === "COMPLETED"}
+            disabled={request.status === "OUTWARDING_COMPLETED" || request.status === "MOVED"}
             className="h-14 px-12 text-lg"
           >
             {request.status === "PENDING" ? "Start Outwarding" : "Continue Outwarding"}

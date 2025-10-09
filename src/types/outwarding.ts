@@ -1,4 +1,4 @@
-export type OutwardRequestStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'IN_TRANSIT';
+export type OutwardRequestStatus = 'PENDING' | 'IN_PROGRESS' | 'OUTWARDING_COMPLETED' | 'MOVED';
 export type BoxStatus = 'OPEN' | 'CLOSED';
 export type PackslipStatus = 'CREATED' | 'IN_TRANSIT';
 

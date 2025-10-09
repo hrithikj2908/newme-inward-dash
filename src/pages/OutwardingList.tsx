@@ -24,8 +24,8 @@ export default function OutwardingList() {
     { label: "All", value: "ALL" },
     { label: "Pending", value: "PENDING" },
     { label: "In Progress", value: "IN_PROGRESS" },
-    { label: "Completed", value: "COMPLETED" },
-    { label: "In Transit", value: "IN_TRANSIT" },
+    { label: "Outwarding Completed", value: "OUTWARDING_COMPLETED" },
+    { label: "Moved", value: "MOVED" },
   ];
 
   return (
@@ -98,8 +98,8 @@ export default function OutwardingList() {
                   const statusMap: Record<OutwardRequestStatus, "pending" | "in-transit" | "completed" | "inwarding"> = {
                     PENDING: "pending",
                     IN_PROGRESS: "inwarding",
-                    COMPLETED: "completed",
-                    IN_TRANSIT: "in-transit"
+                    OUTWARDING_COMPLETED: "completed",
+                    MOVED: "in-transit"
                   };
                   
                   return (

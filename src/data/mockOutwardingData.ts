@@ -44,7 +44,7 @@ export const mockOutwardRequests: OutwardRequest[] = [
     to: "Main Warehouse",
     totalExpectedQty: 95,
     distinctItems: 7,
-    status: "COMPLETED",
+    status: "OUTWARDING_COMPLETED",
     packslipId: "PS-2024-001",
     items: [
       { sku: "SKU-301", style: "Winter Jacket", size: "L", barcode: "7891234567904", mrp: 3499, cogs: 2100, expectedQty: 10, packedQty: 10 },
@@ -63,7 +63,7 @@ export const mockOutwardRequests: OutwardRequest[] = [
     to: "Regional Hub",
     totalExpectedQty: 150,
     distinctItems: 10,
-    status: "IN_TRANSIT",
+    status: "MOVED",
     packslipId: "PS-2024-002",
     items: [
       { sku: "SKU-401", style: "Polo Shirt", size: "M", barcode: "7891234567911", mrp: 899, cogs: 500, expectedQty: 20, packedQty: 20 },
@@ -154,7 +154,47 @@ export const mockPackslips: Packslip[] = [
     totalSkuQty: 95,
     distinctStyles: 7,
     status: "CREATED",
-    boxes: []
+    remark: undefined,
+    missingReportUrl: undefined,
+    boxes: [
+      {
+        id: "BX-OUT-003",
+        requestId: "OR-2024-003",
+        status: "CLOSED",
+        createdAt: "2024-01-13T12:00:00Z",
+        closedAt: "2024-01-13T13:30:00Z",
+        label: "Box 1",
+        items: [
+          { sku: "SKU-301", qty: 10, scannedAt: "2024-01-13T12:15:00Z" },
+          { sku: "SKU-302", qty: 20, scannedAt: "2024-01-13T12:45:00Z" },
+        ]
+      },
+      {
+        id: "BX-OUT-004",
+        requestId: "OR-2024-003",
+        status: "CLOSED",
+        createdAt: "2024-01-13T13:35:00Z",
+        closedAt: "2024-01-13T15:00:00Z",
+        label: "Box 2",
+        items: [
+          { sku: "SKU-303", qty: 15, scannedAt: "2024-01-13T14:00:00Z" },
+          { sku: "SKU-304", qty: 20, scannedAt: "2024-01-13T14:30:00Z" },
+        ]
+      },
+      {
+        id: "BX-OUT-005",
+        requestId: "OR-2024-003",
+        status: "CLOSED",
+        createdAt: "2024-01-13T15:05:00Z",
+        closedAt: "2024-01-13T16:20:00Z",
+        label: "Box 3",
+        items: [
+          { sku: "SKU-305", qty: 15, scannedAt: "2024-01-13T15:20:00Z" },
+          { sku: "SKU-306", qty: 10, scannedAt: "2024-01-13T15:45:00Z" },
+          { sku: "SKU-307", qty: 5, scannedAt: "2024-01-13T16:00:00Z" },
+        ]
+      }
+    ]
   },
   {
     id: "PS-2024-002",
@@ -166,6 +206,8 @@ export const mockPackslips: Packslip[] = [
     totalSkuQty: 150,
     distinctStyles: 10,
     status: "IN_TRANSIT",
+    remark: undefined,
+    missingReportUrl: undefined,
     boxes: []
   }
 ];
