@@ -283,7 +283,7 @@ export default function BoxScanningWorkspace() {
           onClick={() => setShowCompleteModal(true)}
           className="h-14 px-12 text-lg"
         >
-          Complete Inwarding
+          Create Packslip
         </Button>
       </div>
 
