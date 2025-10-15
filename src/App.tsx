@@ -11,6 +11,8 @@ import OutwardingList from "./pages/OutwardingList";
 import OutwardRequestDetail from "./pages/OutwardRequestDetail";
 import BoxScanningWorkspace from "./pages/BoxScanningWorkspace";
 import PackslipView from "./pages/PackslipView";
+import BillingWorkspace from "./pages/billing/BillingWorkspace";
+import InvoiceView from "./pages/billing/InvoiceView";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
               <Route path="/outwarding/:requestId" element={<OutwardRequestDetail />} />
               <Route path="/outwarding/:requestId/workspace" element={<BoxScanningWorkspace />} />
               <Route path="/outwarding/:requestId/packslip" element={<PackslipView />} />
+              <Route path="/billing" element={<BillingWorkspace />} />
+              <Route path="/billing/invoice/:invoiceId" element={<InvoiceView />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
