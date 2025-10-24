@@ -10,6 +10,7 @@ import type {
   Staff,
   AutoDiscount,
   BillManualDiscount,
+  CreditNote,
 } from "@/types/billing";
 
 // Mock catalog data
@@ -409,4 +410,44 @@ export async function deleteSavedCart(savedCartId: string): Promise<void> {
   if (index !== -1) {
     mockSavedCarts.splice(index, 1);
   }
+}
+
+// Mock credit notes data
+const mockCreditNotes: CreditNote[] = [
+  {
+    id: "cn-001",
+    number: "CN-2024-001",
+    customerId: "9876543210",
+    amount: 500,
+    remainingAmount: 500,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "ACTIVE",
+  },
+  {
+    id: "cn-002",
+    number: "CN-2024-002",
+    customerId: "9876543210",
+    amount: 300,
+    remainingAmount: 150,
+    expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "ACTIVE",
+  },
+  {
+    id: "cn-003",
+    number: "CN-2024-003",
+    customerId: "9876543210",
+    amount: 200,
+    remainingAmount: 200,
+    expiresAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "EXPIRED",
+  },
+];
+
+export async function getCreditNotes(customerId?: string): Promise<CreditNote[]> {
+  // TODO: wire to backend
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  if (!customerId) return [];
+  return mockCreditNotes.filter(
+    (cn) => cn.customerId === customerId && cn.status === "ACTIVE" && cn.remainingAmount > 0
+  );
 }

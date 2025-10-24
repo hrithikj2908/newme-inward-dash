@@ -54,13 +54,30 @@ export type Cart = {
   status: "OPEN" | "CHECKING_OUT" | "PAID";
 };
 
-export type PaymentMode = "CASH" | "CARD" | "UPI" | "WALLET" | "GIFTCARD";
+export type PaymentMode = "CASH" | "CARD" | "UPI" | "WALLET" | "GIFTCARD" | "CREDIT_NOTE";
 
 export type PaymentLine = {
   mode: PaymentMode;
   amount: number;
   ref?: string;
   extra?: Record<string, string>;
+  // Mode-specific fields
+  cardType?: string;
+  last4Digits?: string;
+  authNo?: string;
+  bankName?: string;
+  upiRef?: string;
+  creditNoteIds?: string[];
+};
+
+export type CreditNote = {
+  id: string;
+  number: string;
+  customerId: string;
+  amount: number;
+  remainingAmount: number;
+  expiresAt: string;
+  status: "ACTIVE" | "EXPIRED" | "USED";
 };
 
 export type Invoice = {
