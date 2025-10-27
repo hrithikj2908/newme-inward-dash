@@ -1,21 +1,36 @@
 import { useState, useEffect } from "react";
 import {
-  RiMoneyRupeeCircleLine,
-  RiBankCardLine,
-  RiQrCodeLine,
-  RiWalletLine,
-  RiCouponLine,
-  RiGiftLine,
-  RiDeleteBinLine,
-  RiEditLine,
-} from "@remixicon/react";
-import { Button } from "@/components/alignui/button";
-import { Input } from "@/components/alignui/input";
-import { Badge } from "@/components/alignui/badge";
-import * as Modal from "@/components/alignui/modal";
-import { useToast } from "@/hooks/use-toast";
+  Modal,
+  Button,
+  Input,
+  Select,
+  InputNumber,
+  Table,
+  Space,
+  Typography,
+  Divider,
+  Tag,
+  Checkbox,
+  message,
+  Row,
+  Col,
+  Card,
+  Tabs,
+} from "antd";
+import {
+  CreditCardOutlined,
+  DollarOutlined,
+  WalletOutlined,
+  GiftOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  CheckCircleOutlined,
+} from "@ant-design/icons";
 import type { Cart, PaymentLine, PaymentMode, CreditNote } from "@/types/billing";
 import { createInvoice, getCreditNotes } from "@/services/billingMockService";
+
+const { Title, Text } = Typography;
+const { Option } = Select;
 
 interface PaymentModalProps {
   cart: Cart;
@@ -23,617 +38,381 @@ interface PaymentModalProps {
   onSuccess: (invoiceId: string) => void;
 }
 
-type PaymentFormData = {
-  mode: PaymentMode;
-  amount: string;
-  // Card specific
-  cardType?: string;
-  last4Digits?: string;
-  authNo?: string;
-  bankName?: string;
-  // UPI specific
-  upiRef?: string;
-  // Credit Note specific
-  selectedCreditNotes?: string[];
-  // Cash specific
-  cashReceived?: string;
-};
-
 export function PaymentModal({ cart, onClose, onSuccess }: PaymentModalProps) {
-  const { toast } = useToast();
+  const [messageApi, contextHolder] = message.useMessage();
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
-  const [formData, setFormData] = useState<PaymentFormData>({
-    mode: "CASH",
-    amount: "",
-  });
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<PaymentMode>("CASH");
+  const [isOffline] = useState(false);
+
+  // Mode-specific inputs
+  const [cardType, setCardType] = useState("");
+  const [last4Digits, setLast4Digits] = useState("");
+  const [authNo, setAuthNo] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [upiRef, setUpiRef] = useState("");
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [isOffline] = useState(false); // TODO: wire to actual offline detection
+  const [selectedCreditNotes, setSelectedCreditNotes] = useState<string[]>([]);
+  const [cashReceived, setCashReceived] = useState(0);
+  const [currentAmount, setCurrentAmount] = useState(0);
+  const [walletRef, setWalletRef] = useState("");
+  const [giftCardRef, setGiftCardRef] = useState("");
 
-  const totalPaid = paymentLines.reduce((sum, p) => sum + p.amount, 0);
-  const remaining = Math.max(0, cart.totalPayable - totalPaid);
-  const changeDue =
-    formData.mode === "CASH" && formData.cashReceived
-      ? Math.max(0, parseFloat(formData.cashReceived) - (editingIndex !== null ? cart.totalPayable : remaining))
-      : 0;
+  const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
 
-  const canConfirm = remaining === 0 && editingIndex === null;
+  const totalPaid = paymentLines.reduce((sum, line) => sum + line.amount, 0);
+  const remaining = cart.totalPayable - totalPaid;
 
-  // Load credit notes if customer has phone
   useEffect(() => {
-    if (cart.customer.phone) {
+    if (selectedMode === "CREDIT_NOTE" && cart.customer?.phone) {
       getCreditNotes(cart.customer.phone).then(setCreditNotes);
     }
-  }, [cart.customer.phone]);
+  }, [selectedMode, cart.customer]);
 
-  // Auto-fill for single payment mode
-  useEffect(() => {
-    if (paymentLines.length === 0 && formData.mode === "CASH" && !formData.amount) {
-      setFormData((prev) => ({ ...prev, amount: cart.totalPayable.toFixed(2) }));
-    }
-  }, [formData.mode, paymentLines.length, cart.totalPayable, formData.amount]);
-
-  const validateFormData = (): boolean => {
-    const amount = parseFloat(formData.amount);
-    if (!amount || amount <= 0) {
-      toast({ title: "Invalid amount", variant: "destructive" });
-      return false;
-    }
-
-    const maxAmount = editingIndex !== null ? cart.totalPayable : remaining;
-    if (amount > maxAmount) {
-      toast({ title: `Amount cannot exceed ₹${maxAmount.toFixed(2)}`, variant: "destructive" });
-      return false;
-    }
-
-    // Mode-specific validations
-    switch (formData.mode) {
-      case "CARD":
-        if (!formData.cardType || !formData.last4Digits || !formData.authNo) {
-          toast({ title: "Card Type, Last 4 Digits, and Auth No. are required", variant: "destructive" });
-          return false;
-        }
-        if (formData.last4Digits.length !== 4) {
-          toast({ title: "Last 4 digits must be exactly 4 digits", variant: "destructive" });
-          return false;
-        }
-        break;
-      case "UPI":
-        if (!formData.upiRef?.trim()) {
-          toast({ title: "UPI Reference is required", variant: "destructive" });
-          return false;
-        }
-        break;
-      case "CREDIT_NOTE":
-        if (!formData.selectedCreditNotes || formData.selectedCreditNotes.length === 0) {
-          toast({ title: "Please select at least one credit note", variant: "destructive" });
-          return false;
-        }
-        break;
-    }
-
-    return true;
+  const resetModeInputs = () => {
+    setCardType("");
+    setLast4Digits("");
+    setAuthNo("");
+    setBankName("");
+    setUpiRef("");
+    setSelectedCreditNotes([]);
+    setCashReceived(0);
+    setCurrentAmount(0);
+    setWalletRef("");
+    setGiftCardRef("");
   };
 
-  const handleAddOrUpdatePaymentLine = () => {
-    if (!validateFormData()) return;
+  const handleAddPaymentLine = () => {
+    if (editingLineIndex !== null) {
+      const updatedLines = [...paymentLines];
+      updatedLines[editingLineIndex] = buildPaymentLine();
+      setPaymentLines(updatedLines);
+      setEditingLineIndex(null);
+      messageApi.success("Payment line updated");
+    } else {
+      const newLine = buildPaymentLine();
+      setPaymentLines([...paymentLines, newLine]);
+      messageApi.success("Payment line added");
+    }
+    resetModeInputs();
+    setSelectedMode("CASH");
+  };
 
-    const amount = parseFloat(formData.amount);
-    const line: PaymentLine = {
-      mode: formData.mode,
-      amount,
+  const buildPaymentLine = (): PaymentLine => {
+    const base: PaymentLine = {
+      mode: selectedMode,
+      amount: currentAmount || remaining,
     };
 
-    // Add mode-specific data
-    switch (formData.mode) {
-      case "CARD":
-        line.cardType = formData.cardType;
-        line.last4Digits = formData.last4Digits;
-        line.authNo = formData.authNo;
-        line.bankName = formData.bankName;
-        line.ref = formData.authNo;
-        break;
-      case "UPI":
-        line.upiRef = formData.upiRef;
-        line.ref = formData.upiRef;
-        break;
-      case "CREDIT_NOTE":
-        line.creditNoteIds = formData.selectedCreditNotes;
-        line.ref = formData.selectedCreditNotes?.join(", ");
-        break;
+    if (selectedMode === "CARD") {
+      return {
+        ...base,
+        cardType,
+        last4Digits,
+        authNo,
+        bankName,
+        ref: authNo,
+      };
+    } else if (selectedMode === "UPI") {
+      return { ...base, upiRef, ref: upiRef };
+    } else if (selectedMode === "CREDIT_NOTE") {
+      const total = selectedCreditNotes.reduce((sum, id) => {
+        const cn = creditNotes.find((c) => c.id === id);
+        return sum + (cn?.amount || 0);
+      }, 0);
+      return {
+        ...base,
+        amount: total,
+        creditNoteIds: selectedCreditNotes,
+        ref: selectedCreditNotes.join(", "),
+      };
+    } else if (selectedMode === "CASH") {
+      return { ...base, amount: currentAmount || remaining };
+    } else if (selectedMode === "WALLET") {
+      return { ...base, ref: walletRef };
+    } else if (selectedMode === "GIFTCARD") {
+      return { ...base, ref: giftCardRef };
     }
-
-    if (editingIndex !== null) {
-      // Update existing line
-      const updated = [...paymentLines];
-      updated[editingIndex] = line;
-      setPaymentLines(updated);
-      setEditingIndex(null);
-      toast({ title: "Payment mode updated" });
-    } else {
-      // Add new line
-      setPaymentLines([...paymentLines, line]);
-      toast({ title: "Payment mode added" });
-    }
-
-    // Reset form
-    setFormData({
-      mode: "CASH",
-      amount: "",
-    });
+    return base;
   };
 
-  const handleEditPaymentLine = (index: number) => {
+  const handleEditLine = (index: number) => {
     const line = paymentLines[index];
-    setEditingIndex(index);
-    setFormData({
-      mode: line.mode,
-      amount: line.amount.toFixed(2),
-      cardType: line.cardType,
-      last4Digits: line.last4Digits,
-      authNo: line.authNo,
-      bankName: line.bankName,
-      upiRef: line.upiRef,
-      selectedCreditNotes: line.creditNoteIds,
-    });
+    setEditingLineIndex(index);
+    setSelectedMode(line.mode);
+    setCurrentAmount(line.amount);
+
+    if (line.mode === "CARD") {
+      setCardType(line.cardType || "");
+      setLast4Digits(line.last4Digits || "");
+      setAuthNo(line.authNo || "");
+      setBankName(line.bankName || "");
+    } else if (line.mode === "UPI") {
+      setUpiRef(line.upiRef || "");
+    } else if (line.mode === "CREDIT_NOTE") {
+      setSelectedCreditNotes(line.creditNoteIds || []);
+    } else if (line.mode === "WALLET") {
+      setWalletRef(line.ref || "");
+    } else if (line.mode === "GIFTCARD") {
+      setGiftCardRef(line.ref || "");
+    }
   };
 
-  const handleCancelEdit = () => {
-    setEditingIndex(null);
-    setFormData({
-      mode: "CASH",
-      amount: "",
-    });
-  };
-
-  const handleRemovePaymentLine = (index: number) => {
-    setPaymentLines(paymentLines.filter((_, i) => i !== index));
-    toast({ title: "Payment mode removed" });
+  const handleDeleteLine = (index: number) => {
+    const updated = paymentLines.filter((_, i) => i !== index);
+    setPaymentLines(updated);
+    messageApi.success("Payment line removed");
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm) {
-      toast({ title: "Remaining amount must be ₹0", variant: "destructive" });
+    if (remaining !== 0) {
+      messageApi.error("Remaining amount must be ₹0 to confirm");
       return;
     }
-
-    setIsProcessing(true);
     try {
       const invoice = await createInvoice(cart, paymentLines);
-      toast({ title: "Payment successful!", description: `Invoice ${invoice.id}` });
+      messageApi.success(`Invoice ${invoice.id} created`);
       onSuccess(invoice.id);
     } catch (error) {
-      toast({ title: "Payment failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
+      messageApi.error(String(error));
     }
   };
 
-  const handleCreditNoteToggle = (noteId: string) => {
-    const selected = formData.selectedCreditNotes || [];
-    const newSelected = selected.includes(noteId)
-      ? selected.filter((id) => id !== noteId)
-      : [...selected, noteId];
-    
-    setFormData((prev) => ({ ...prev, selectedCreditNotes: newSelected }));
+  const columns = [
+    {
+      title: "Mode",
+      dataIndex: "mode",
+      key: "mode",
+      render: (mode: PaymentMode) => <Tag color="blue">{mode}</Tag>,
+    },
+    {
+      title: "Reference",
+      dataIndex: "ref",
+      key: "ref",
+      render: (ref?: string) => ref || "-",
+    },
+    {
+      title: "Amount",
+      dataIndex: "amount",
+      key: "amount",
+      render: (amount: number) => `₹${amount.toFixed(2)}`,
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_: any, record: PaymentLine, index: number) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditLine(index)} />
+          <Button danger size="small" icon={<DeleteOutlined />} onClick={() => handleDeleteLine(index)} />
+        </Space>
+      ),
+    },
+  ];
 
-    // Auto-calculate total from selected notes
-    const totalCreditAmount = creditNotes
-      .filter((cn) => newSelected.includes(cn.id))
-      .reduce((sum, cn) => sum + cn.remainingAmount, 0);
-    
-    setFormData((prev) => ({
-      ...prev,
-      amount: Math.min(totalCreditAmount, remaining).toFixed(2),
-    }));
-  };
-
-  const renderModeSpecificInputs = () => {
-    switch (formData.mode) {
-      case "CARD":
-        return (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Card Type *</label>
-                <select
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background"
-                  value={formData.cardType || ""}
-                  onChange={(e) => setFormData({ ...formData, cardType: e.target.value })}
-                >
-                  <option value="">Select...</option>
-                  <option value="VISA">Visa</option>
-                  <option value="MASTERCARD">MasterCard</option>
-                  <option value="RUPAY">RuPay</option>
-                  <option value="AMEX">American Express</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Last 4 Digits *</label>
-                <Input
-                  type="text"
-                  placeholder="1234"
-                  maxLength={4}
-                  value={formData.last4Digits || ""}
-                  onChange={(e) => setFormData({ ...formData, last4Digits: e.target.value.replace(/\D/g, "") })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Auth/Approval No. *</label>
-                <Input
-                  placeholder="AUTH123456"
-                  value={formData.authNo || ""}
-                  onChange={(e) => setFormData({ ...formData, authNo: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Bank Name</label>
-                <Input
-                  placeholder="HDFC Bank"
-                  value={formData.bankName || ""}
-                  onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Amount *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-              />
-            </div>
-          </div>
-        );
-
-      case "UPI":
-        return (
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Amount *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">UPI Reference / Transaction No. *</label>
-              <Input
-                placeholder="UTR123ABC456"
-                value={formData.upiRef || ""}
-                onChange={(e) => setFormData({ ...formData, upiRef: e.target.value })}
-              />
-            </div>
-          </div>
-        );
-
-      case "CREDIT_NOTE":
-        return (
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Select Credit Note(s) *</label>
-              {creditNotes.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-4 border border-border rounded-md">
-                  No active credit notes available for this customer
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-md p-3">
-                  {creditNotes.map((note) => (
-                    <label
-                      key={note.id}
-                      className="flex items-center gap-3 p-2 hover:bg-accent rounded cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.selectedCreditNotes?.includes(note.id) || false}
-                        onChange={() => handleCreditNoteToggle(note.id)}
-                        className="w-4 h-4"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">{note.number}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Available: ₹{note.remainingAmount.toFixed(2)} / ₹{note.amount.toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="text-sm font-semibold">₹{note.remainingAmount.toFixed(2)}</div>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Applied Amount *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-                disabled={!formData.selectedCreditNotes || formData.selectedCreditNotes.length === 0}
-              />
-            </div>
-          </div>
-        );
-
-      case "CASH":
-        return (
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Amount *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-              />
-            </div>
-            {formData.amount && (
-              <div>
-                <label className="text-sm font-medium mb-1 block">Cash Received</label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={formData.cashReceived || ""}
-                  onChange={(e) => setFormData({ ...formData, cashReceived: e.target.value })}
-                  step="0.01"
-                />
-                {changeDue > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-accent rounded-md mt-2">
-                    <span className="text-sm font-medium">Change Due</span>
-                    <span className="font-bold text-lg">₹{changeDue.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-
-      case "WALLET":
-      case "GIFTCARD":
-        return (
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Amount *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Reference / Code</label>
-              <Input
-                placeholder="REF123"
-                value={formData.upiRef || ""}
-                onChange={(e) => setFormData({ ...formData, upiRef: e.target.value })}
-              />
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
+  const renderModeInputs = () => {
+    if (selectedMode === "CARD") {
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Select
+            placeholder="Card Type"
+            value={cardType}
+            onChange={setCardType}
+            style={{ width: "100%" }}
+          >
+            <Option value="Visa">Visa</Option>
+            <Option value="MasterCard">MasterCard</Option>
+            <Option value="Rupay">Rupay</Option>
+            <Option value="Amex">Amex</Option>
+          </Select>
+          <Input placeholder="Last 4 Digits" value={last4Digits} onChange={(e) => setLast4Digits(e.target.value)} maxLength={4} />
+          <Input placeholder="Auth/Approval No." value={authNo} onChange={(e) => setAuthNo(e.target.value)} />
+          <Input placeholder="Bank Name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+          <InputNumber
+            placeholder="Amount"
+            value={currentAmount || remaining}
+            onChange={(val) => setCurrentAmount(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+        </Space>
+      );
+    } else if (selectedMode === "UPI") {
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input placeholder="UPI Reference / Txn No." value={upiRef} onChange={(e) => setUpiRef(e.target.value)} />
+          <InputNumber
+            placeholder="Amount"
+            value={currentAmount || remaining}
+            onChange={(val) => setCurrentAmount(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+        </Space>
+      );
+    } else if (selectedMode === "CREDIT_NOTE") {
+      const totalCN = selectedCreditNotes.reduce((sum, id) => {
+        const cn = creditNotes.find((c) => c.id === id);
+        return sum + (cn?.amount || 0);
+      }, 0);
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Text strong>Available Credit Notes:</Text>
+          <Checkbox.Group value={selectedCreditNotes} onChange={(vals) => setSelectedCreditNotes(vals as string[])}>
+            <Space direction="vertical">
+              {creditNotes.map((cn) => (
+                <Checkbox key={cn.id} value={cn.id}>
+                  {cn.number} - ₹{cn.amount.toFixed(2)}
+                </Checkbox>
+              ))}
+            </Space>
+          </Checkbox.Group>
+          <Text>Total Applied: ₹{totalCN.toFixed(2)}</Text>
+        </Space>
+      );
+    } else if (selectedMode === "CASH") {
+      const change = cashReceived - (currentAmount || remaining);
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <InputNumber
+            placeholder="Amount"
+            value={currentAmount || remaining}
+            onChange={(val) => setCurrentAmount(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+          <InputNumber
+            placeholder="Cash Received"
+            value={cashReceived}
+            onChange={(val) => setCashReceived(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+          {change > 0 && (
+            <Text strong style={{ color: "#52c41a" }}>
+              Change Due: ₹{change.toFixed(2)}
+            </Text>
+          )}
+        </Space>
+      );
+    } else if (selectedMode === "WALLET") {
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input placeholder="Wallet Reference" value={walletRef} onChange={(e) => setWalletRef(e.target.value)} />
+          <InputNumber
+            placeholder="Amount"
+            value={currentAmount || remaining}
+            onChange={(val) => setCurrentAmount(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+        </Space>
+      );
+    } else if (selectedMode === "GIFTCARD") {
+      return (
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input placeholder="Gift Card Reference" value={giftCardRef} onChange={(e) => setGiftCardRef(e.target.value)} />
+          <InputNumber
+            placeholder="Amount"
+            value={currentAmount || remaining}
+            onChange={(val) => setCurrentAmount(val || 0)}
+            style={{ width: "100%" }}
+            prefix="₹"
+          />
+        </Space>
+      );
     }
+    return null;
   };
 
-  const getModeIcon = (mode: PaymentMode) => {
-    switch (mode) {
-      case "CASH":
-        return <RiMoneyRupeeCircleLine className="w-5 h-5" />;
-      case "CARD":
-        return <RiBankCardLine className="w-5 h-5" />;
-      case "UPI":
-        return <RiQrCodeLine className="w-5 h-5" />;
-      case "WALLET":
-        return <RiWalletLine className="w-5 h-5" />;
-      case "GIFTCARD":
-        return <RiGiftLine className="w-5 h-5" />;
-      case "CREDIT_NOTE":
-        return <RiCouponLine className="w-5 h-5" />;
-      default:
-        return null;
-    }
-  };
-
-  const getPaymentLineSummary = (line: PaymentLine) => {
-    switch (line.mode) {
-      case "CARD":
-        return `${line.cardType || "Card"} •••• ${line.last4Digits} • Auth: ${line.authNo}`;
-      case "UPI":
-        return `UPI Ref: ${line.upiRef}`;
-      case "CREDIT_NOTE":
-        return `${line.creditNoteIds?.length} note(s)`;
-      default:
-        return line.ref || line.mode;
-    }
-  };
-
-  const paymentModes: PaymentMode[] = ["CASH", "CARD", "UPI", "CREDIT_NOTE", "WALLET", "GIFTCARD"];
+  const modeItems = [
+    { key: "CASH", label: "Cash", icon: <DollarOutlined /> },
+    { key: "CARD", label: "Card", icon: <CreditCardOutlined />, disabled: isOffline },
+    { key: "UPI", label: "UPI", icon: <WalletOutlined />, disabled: isOffline },
+    { key: "CREDIT_NOTE", label: "Credit Note", icon: <GiftOutlined />, disabled: isOffline },
+    { key: "WALLET", label: "Wallet", icon: <WalletOutlined />, disabled: isOffline },
+    { key: "GIFTCARD", label: "Gift Card", icon: <GiftOutlined />, disabled: isOffline },
+  ];
 
   return (
-    <Modal.Root open onOpenChange={onClose}>
-      <Modal.Content className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <Modal.Header>
-          <Modal.Title>Complete Payment</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="space-y-6">
-            {/* Amount Due */}
-            <div className="text-center py-6 bg-accent rounded-lg border-2 border-primary/20">
-              <div className="text-sm text-muted-foreground mb-1">Amount Due</div>
-              <div className="text-4xl font-bold text-primary">₹{cart.totalPayable.toFixed(2)}</div>
-            </div>
-
-            {/* Offline Banner */}
-            {isOffline && (
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm">
-                ⚠️ Offline mode: Only Cash payment available
+    <Modal
+      open={true}
+      onCancel={onClose}
+      title={<Title level={3}>Complete Payment</Title>}
+      width={900}
+      footer={null}
+    >
+      {contextHolder}
+      <Space direction="vertical" style={{ width: "100%" }} size="large">
+        <Card>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Text strong>Amount Due:</Text>
+              <div>
+                <Text style={{ fontSize: 28, fontWeight: "bold" }}>₹{cart.totalPayable.toFixed(2)}</Text>
               </div>
-            )}
-
-            {/* Payment Mode Selector */}
-            <div>
-              <label className="text-sm font-medium mb-3 block">Select Payment Mode</label>
-              <div className="grid grid-cols-3 gap-2">
-                {paymentModes.map((mode) => (
-                  <Button
-                    key={mode}
-                    variant={formData.mode === mode ? "primary" : "outline"}
-                    size="lg"
-                    onClick={() => setFormData({ mode, amount: "" })}
-                    disabled={isOffline && mode !== "CASH"}
-                    className="flex flex-col items-center gap-1 h-auto py-3"
-                  >
-                    {getModeIcon(mode)}
-                    <span className="text-xs">{mode.replace("_", " ")}</span>
-                  </Button>
-                ))}
+            </Col>
+            <Col span={8}>
+              <Text strong>Total Paid:</Text>
+              <div>
+                <Text style={{ fontSize: 28, fontWeight: "bold", color: "#52c41a" }}>₹{totalPaid.toFixed(2)}</Text>
               </div>
-            </div>
-
-            {/* Mode-Specific Form */}
-            <div className="border border-border rounded-lg p-4 bg-accent/30">
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-semibold text-lg">
-                  {editingIndex !== null ? "Edit" : "Add"} {formData.mode.replace("_", " ")} Payment
-                </span>
-                <Badge variant={remaining === 0 ? "success" : "warning"} className="text-sm">
-                  Remaining: ₹{remaining.toFixed(2)}
-                </Badge>
-              </div>
-
-              {renderModeSpecificInputs()}
-
-              <div className="flex gap-2 mt-4">
-                {editingIndex !== null ? (
-                  <>
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={handleAddOrUpdatePaymentLine}
-                      className="flex-1"
-                    >
-                      Update Payment
-                    </Button>
-                    <Button variant="outline" size="lg" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={handleAddOrUpdatePaymentLine}
-                    className="w-full"
-                  >
-                    + Add {formData.mode.replace("_", " ")}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Payment Lines Breakdown */}
-            {paymentLines.length > 0 && (
-              <div className="space-y-3">
-                <div className="text-sm font-semibold">Payment Breakdown</div>
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-accent border-b border-border">
-                      <tr>
-                        <th className="text-left p-3 text-sm font-medium">Mode</th>
-                        <th className="text-left p-3 text-sm font-medium">Details</th>
-                        <th className="text-right p-3 text-sm font-medium">Amount</th>
-                        <th className="text-right p-3 text-sm font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentLines.map((line, idx) => (
-                        <tr key={idx} className="border-b border-border last:border-0 hover:bg-accent/50">
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              {getModeIcon(line.mode)}
-                              <span className="font-medium text-sm">{line.mode.replace("_", " ")}</span>
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="text-sm text-muted-foreground">{getPaymentLineSummary(line)}</div>
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className="font-semibold">₹{line.amount.toFixed(2)}</span>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditPaymentLine(idx)}
-                                disabled={editingIndex !== null}
-                              >
-                                <RiEditLine className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemovePaymentLine(idx)}
-                                disabled={editingIndex !== null}
-                              >
-                                <RiDeleteBinLine className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Summary */}
-            <div className="border-t-2 border-border pt-4 space-y-3">
-              <div className="flex justify-between text-base">
-                <span className="text-muted-foreground">Total Payable</span>
-                <span className="font-semibold">₹{cart.totalPayable.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-base">
-                <span className="text-muted-foreground">Total Paid</span>
-                <span className="font-semibold">₹{totalPaid.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xl font-bold">
-                <span>Remaining</span>
-                <span className={remaining === 0 ? "text-green-600" : "text-red-600"}>
+            </Col>
+            <Col span={8}>
+              <Text strong>Remaining:</Text>
+              <div>
+                <Text style={{ fontSize: 28, fontWeight: "bold", color: remaining === 0 ? "#52c41a" : "#ff4d4f" }}>
                   ₹{remaining.toFixed(2)}
-                </span>
+                </Text>
               </div>
-            </div>
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="outline" onClick={onClose} size="lg">
-            Cancel
-          </Button>
+            </Col>
+          </Row>
+        </Card>
+
+        <Divider />
+
+        <Title level={5}>Select Payment Mode</Title>
+        <Tabs
+          activeKey={selectedMode}
+          onChange={(key) => setSelectedMode(key as PaymentMode)}
+          items={modeItems.map((item) => ({
+            key: item.key,
+            label: (
+              <span>
+                {item.icon} {item.label}
+              </span>
+            ),
+            disabled: item.disabled,
+          }))}
+        />
+
+        <Card>{renderModeInputs()}</Card>
+
+        <Button type="primary" onClick={handleAddPaymentLine} block>
+          {editingLineIndex !== null ? "Update Payment Line" : "Add Payment Line"}
+        </Button>
+
+        {paymentLines.length > 0 && (
+          <>
+            <Divider />
+            <Title level={5}>Payment Breakdown</Title>
+            <Table dataSource={paymentLines} columns={columns} pagination={false} rowKey={(_, index) => index!} />
+          </>
+        )}
+
+        <Divider />
+
+        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+          <Button onClick={onClose}>Back</Button>
           <Button
+            type="primary"
+            size="large"
+            icon={<CheckCircleOutlined />}
             onClick={handleConfirm}
-            disabled={!canConfirm || isProcessing}
-            size="lg"
-            variant="primary"
-            className="min-w-48"
+            disabled={remaining !== 0}
           >
-            {isProcessing ? "Processing..." : "Confirm Payment"}
+            Confirm Payment
           </Button>
-        </Modal.Footer>
-      </Modal.Content>
-    </Modal.Root>
+        </Space>
+      </Space>
+    </Modal>
   );
 }

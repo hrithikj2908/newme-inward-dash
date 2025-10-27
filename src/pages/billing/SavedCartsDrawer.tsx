@@ -1,202 +1,180 @@
-import { useState, useEffect } from "react";
-import { RiDeleteBinLine, RiPlayLine } from "@remixicon/react";
-import { Button } from "@/components/alignui/button";
-import { Badge } from "@/components/alignui/badge";
-import * as Drawer from "@/components/alignui/drawer";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, useState } from "react";
+import { Drawer, Button, Table, Space, Typography, Tag, Input, Select, message, Empty } from "antd";
+import { ShoppingCartOutlined, DeleteOutlined, PlayCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import { getSavedCarts, resumeCart, deleteSavedCart } from "@/services/billingMockService";
 import type { SavedCart, Cart } from "@/types/billing";
-import { getSavedCarts, deleteSavedCart, resumeCart } from "@/services/billingMockService";
+
+const { Title, Text } = Typography;
+const { Option } = Select;
 
 interface SavedCartsDrawerProps {
+  open: boolean;
   onClose: () => void;
   onResume: (cart: Partial<Cart>) => void;
 }
 
-export function SavedCartsDrawer({ onClose, onResume }: SavedCartsDrawerProps) {
-  const { toast } = useToast();
+export function SavedCartsDrawer({ open, onClose, onResume }: SavedCartsDrawerProps) {
+  const [messageApi, contextHolder] = message.useMessage();
   const [savedCarts, setSavedCarts] = useState<SavedCart[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"ALL" | "SAVED" | "EXPIRED">("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
-    loadSavedCarts();
-  }, [filter]);
+    if (open) {
+      loadSavedCarts();
+    }
+  }, [open]);
 
   const loadSavedCarts = async () => {
-    setLoading(true);
     try {
-      const carts = await getSavedCarts({
-        status: filter === "ALL" ? undefined : filter,
-      });
+      const carts = await getSavedCarts();
       setSavedCarts(carts);
     } catch (error) {
-      toast({ title: "Failed to load saved carts", variant: "destructive" });
-    } finally {
-      setLoading(false);
+      messageApi.error("Failed to load saved carts");
     }
   };
 
-  const handleResume = async (savedCart: SavedCart) => {
+  const handleResume = async (cartId: string) => {
     try {
-      const { cart, repricingChanges } = await resumeCart(savedCart.id);
-
-      if (repricingChanges.length > 0) {
-        toast({
-          title: "Prices updated",
-          description: `${repricingChanges.length} items have been repriced`,
-        });
-      }
-
-      onResume(cart);
+      const result = await resumeCart(cartId);
+      messageApi.success("Cart resumed. Prices and offers re-applied.");
+      onResume(result.cart);
+      onClose();
     } catch (error) {
-      toast({ title: "Failed to resume cart", variant: "destructive" });
+      messageApi.error(String(error));
     }
   };
 
   const handleDelete = async (cartId: string) => {
-    if (!confirm("Are you sure you want to delete this cart?")) return;
-
     try {
       await deleteSavedCart(cartId);
-      toast({ title: "Cart deleted" });
+      messageApi.success("Cart deleted");
       loadSavedCarts();
     } catch (error) {
-      toast({ title: "Failed to delete cart", variant: "destructive" });
+      messageApi.error(String(error));
     }
   };
 
-  const getStatusBadgeVariant = (status: SavedCart["status"]) => {
-    switch (status) {
-      case "SAVED":
-        return "success";
-      case "EXPIRED":
-        return "destructive";
-      case "LOCKED":
-        return "warning";
-      case "PENDING_SYNC":
-        return "secondary";
-      default:
-        return "default";
-    }
-  };
+  const filteredCarts = savedCarts.filter((cart) => {
+    const matchesSearch =
+      cart.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      cart.customer?.phone?.includes(searchQuery) ||
+      cart.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || cart.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const columns = [
+    {
+      title: "Cart Label",
+      dataIndex: "label",
+      key: "label",
+    },
+    {
+      title: "Customer",
+      key: "customer",
+      render: (_: any, record: SavedCart) =>
+        record.customer?.isGuest ? (
+          <Tag>Guest</Tag>
+        ) : (
+          <div>
+            <div>{record.customer?.name}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.customer?.phone}
+            </Text>
+          </div>
+        ),
+    },
+    {
+      title: "Items",
+      dataIndex: "lines",
+      key: "items",
+      render: (lines: any[]) => `${lines.length} items`,
+    },
+    {
+      title: "Subtotal",
+      dataIndex: "subtotalAtSave",
+      key: "subtotal",
+      render: (subtotal: number) => `₹${subtotal.toFixed(2)}`,
+    },
+    {
+      title: "Created",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      render: (date: string) => new Date(date).toLocaleString(),
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status: string) => {
+        const color =
+          status === "SAVED" ? "green" : status === "LOCKED" ? "orange" : status === "EXPIRED" ? "red" : "blue";
+        return <Tag color={color}>{status}</Tag>;
+      },
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_: any, record: SavedCart) => (
+        <Space>
+          <Button
+            type="primary"
+            size="small"
+            icon={<PlayCircleOutlined />}
+            onClick={() => handleResume(record.id)}
+            disabled={record.status === "LOCKED"}
+          >
+            Resume
+          </Button>
+          <Button danger size="small" icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)} />
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <Drawer.Root open onOpenChange={onClose}>
-      <Drawer.Content>
-        <Drawer.Header>
-          <Drawer.Title>Saved Carts</Drawer.Title>
-        </Drawer.Header>
+    <Drawer
+      title={
+        <Space>
+          <ShoppingCartOutlined />
+          <Title level={4} style={{ margin: 0 }}>
+            Saved Carts
+          </Title>
+        </Space>
+      }
+      placement="right"
+      width={1000}
+      open={open}
+      onClose={onClose}
+    >
+      {contextHolder}
+      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+          <Input
+            placeholder="Search by label, name, or phone"
+            prefix={<SearchOutlined />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: 300 }}
+          />
+          <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }}>
+            <Option value="all">All Status</Option>
+            <Option value="SAVED">Saved</Option>
+            <Option value="LOCKED">Locked</Option>
+            <Option value="EXPIRED">Expired</Option>
+            <Option value="PENDING_SYNC">Pending Sync</Option>
+          </Select>
+        </Space>
 
-        <div className="px-6 py-3 border-b border-border">
-          <div className="flex gap-2">
-            {(["ALL", "SAVED", "EXPIRED"] as const).map((f) => (
-              <Button
-                key={f}
-                variant={filter === f ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setFilter(f)}
-              >
-                {f}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <Drawer.Body>
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-3"></div>
-              <p className="text-sm text-muted-foreground">Loading carts...</p>
-            </div>
-          ) : savedCarts.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No saved carts</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {savedCarts.map((cart) => (
-                <div
-                  key={cart.id}
-                  className="border border-border rounded-lg p-4 space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-semibold">{cart.label}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {cart.customer?.name || "Guest"}{" "}
-                        {cart.customer?.phone && `• ${cart.customer.phone}`}
-                      </div>
-                    </div>
-                    <Badge variant={getStatusBadgeVariant(cart.status)}>
-                      {cart.status}
-                    </Badge>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">Items</div>
-                      <div className="font-medium">{cart.lines.length}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Subtotal</div>
-                      <div className="font-medium">
-                        ₹{cart.subtotalAtSave.toFixed(2)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Created</div>
-                      <div className="font-medium">
-                        {new Date(cart.createdAt).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-2 border-t border-border">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleResume(cart)}
-                      disabled={cart.status === "LOCKED"}
-                    >
-                      <RiPlayLine className="w-4 h-4" />
-                      Resume
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(cart.id)}
-                    >
-                      <RiDeleteBinLine className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  {cart.status === "LOCKED" && (
-                    <div className="text-xs text-muted-foreground bg-yellow-50 dark:bg-yellow-950 p-2 rounded">
-                      Cart is open elsewhere. Contact admin to take over.
-                    </div>
-                  )}
-
-                  {cart.status === "EXPIRED" && (
-                    <div className="text-xs text-muted-foreground bg-red-50 dark:bg-red-950 p-2 rounded">
-                      Cart expired. Resume will reprice items.
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Drawer.Body>
-
-        <Drawer.Footer>
-          <Button variant="outline" onClick={onClose} className="w-full">
-            Close
-          </Button>
-        </Drawer.Footer>
-      </Drawer.Content>
-    </Drawer.Root>
+        {filteredCarts.length === 0 ? (
+          <Empty description="No saved carts" />
+        ) : (
+          <Table dataSource={filteredCarts} columns={columns} rowKey="id" pagination={{ pageSize: 10 }} />
+        )}
+      </Space>
+    </Drawer>
   );
 }

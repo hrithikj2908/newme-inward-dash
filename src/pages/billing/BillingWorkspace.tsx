@@ -1,10 +1,29 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { RiBarcodeLine, RiSave3Line, RiUserLine, RiDeleteBinLine, RiAddLine, RiSubtractLine } from "@remixicon/react";
-import { Button } from "@/components/alignui/button";
-import { Input } from "@/components/alignui/input";
-import { Badge } from "@/components/alignui/badge";
-import { useToast } from "@/hooks/use-toast";
+import {
+  Button,
+  Input,
+  Select,
+  Table,
+  Space,
+  Card,
+  Typography,
+  AutoComplete,
+  message,
+  Badge,
+  Empty,
+  InputNumber,
+} from "antd";
+import {
+  ScanOutlined,
+  UserOutlined,
+  ShoppingCartOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  MinusOutlined,
+  SaveOutlined,
+  DollarOutlined,
+} from "@ant-design/icons";
 import type { Cart, CartLine, Customer, Staff, BillManualDiscount } from "@/types/billing";
 import {
   searchCustomers,
@@ -14,14 +33,15 @@ import {
   mockStaff,
   saveCart,
 } from "@/services/billingMockService";
-import * as Drawer from "@/components/alignui/drawer";
-import * as Modal from "@/components/alignui/modal";
 import { PaymentModal } from "./PaymentModal";
 import { SavedCartsDrawer } from "./SavedCartsDrawer";
 
+const { Title, Text } = Typography;
+const { Option } = Select;
+
 export default function BillingWorkspace() {
-  const { toast } = useToast();
   const navigate = useNavigate();
+  const [messageApi, contextHolder] = message.useMessage();
 
   // Cart state
   const [cart, setCart] = useState<Partial<Cart>>({
@@ -38,7 +58,7 @@ export default function BillingWorkspace() {
   // UI state
   const [phoneInput, setPhoneInput] = useState("");
   const [nameInput, setNameInput] = useState("");
-  const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
+  const [customerSuggestions, setCustomerSuggestions] = useState<{ value: string; label: string }[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [lastScanned, setLastScanned] = useState<CartLine | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -46,13 +66,20 @@ export default function BillingWorkspace() {
   const [saveLabel, setSaveLabel] = useState("");
   const [showSavedCarts, setShowSavedCarts] = useState(false);
   const [manualDiscountReason, setManualDiscountReason] = useState("");
-  const [manualDiscountValue, setManualDiscountValue] = useState("");
+  const [manualDiscountValue, setManualDiscountValue] = useState<number | null>(null);
   const [manualDiscountType, setManualDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
 
   // Fetch customer suggestions
   useEffect(() => {
     if (phoneInput.length >= 3) {
-      searchCustomers(phoneInput).then(setCustomerSuggestions);
+      searchCustomers(phoneInput).then((customers) => {
+        setCustomerSuggestions(
+          customers.map((c) => ({
+            value: c.phone || "",
+            label: `${c.name} - ${c.phone}`,
+          }))
+        );
+      });
     } else {
       setCustomerSuggestions([]);
     }
@@ -76,11 +103,14 @@ export default function BillingWorkspace() {
     }
   }, [cart.lines]);
 
-  const handleCustomerSelect = (customer: Customer) => {
-    setCart((prev) => ({ ...prev, customer }));
-    setPhoneInput(customer.phone || "");
-    setNameInput(customer.name || "");
-    setCustomerSuggestions([]);
+  const handleCustomerSelect = (value: string, option: any) => {
+    setPhoneInput(value);
+    const customer = customerSuggestions.find((c) => c.value === value);
+    if (customer) {
+      const name = customer.label.split(" - ")[0];
+      setNameInput(name);
+      setCart((prev) => ({ ...prev, customer: { phone: value, name } }));
+    }
   };
 
   const handleSkipCustomer = () => {
@@ -91,7 +121,7 @@ export default function BillingWorkspace() {
     }));
     setPhoneInput(randomPhone);
     setNameInput("Guest");
-    toast({ title: "Guest customer added" });
+    messageApi.info("Guest customer added");
   };
 
   const handleScanBarcode = async () => {
@@ -121,13 +151,9 @@ export default function BillingWorkspace() {
       }
 
       setBarcodeInput("");
-      toast({ title: "Item added", description: item.name });
+      messageApi.success(`${item.name} added`);
     } catch (error) {
-      toast({
-        title: "Invalid barcode",
-        description: "Item not found",
-        variant: "destructive",
-      });
+      messageApi.error("Invalid barcode");
     }
   };
 
@@ -149,21 +175,18 @@ export default function BillingWorkspace() {
       ...prev,
       lines: prev.lines?.filter((l) => l.sku !== sku),
     }));
-    toast({ title: "Item removed" });
+    messageApi.success("Item removed");
   };
 
   const handleAddManualDiscount = () => {
     if (!manualDiscountReason.trim() || !manualDiscountValue) {
-      toast({
-        title: "Discount reason required",
-        variant: "destructive",
-      });
+      messageApi.error("Discount reason and value required");
       return;
     }
 
     const discount: BillManualDiscount = {
       type: manualDiscountType,
-      value: parseFloat(manualDiscountValue),
+      value: manualDiscountValue,
       reason: manualDiscountReason,
     };
 
@@ -173,19 +196,19 @@ export default function BillingWorkspace() {
     }));
 
     setManualDiscountReason("");
-    setManualDiscountValue("");
-    toast({ title: "Discount applied" });
+    setManualDiscountValue(null);
+    messageApi.success("Discount applied");
   };
 
   const handleSaveCart = async () => {
     if (!cart.lines || cart.lines.length === 0) {
-      toast({ title: "Cart is empty", variant: "destructive" });
+      messageApi.error("Cart is empty");
       return;
     }
 
     try {
       await saveCart(cart, saveLabel || `Cart ${Date.now()}`);
-      toast({ title: "Cart saved successfully" });
+      messageApi.success("Cart saved successfully");
       setShowSaveModal(false);
       setSaveLabel("");
       // Clear workspace
@@ -202,7 +225,7 @@ export default function BillingWorkspace() {
       setPhoneInput("");
       setNameInput("");
     } catch (error) {
-      toast({ title: "Failed to save cart", variant: "destructive" });
+      messageApi.error("Failed to save cart");
     }
   };
 
@@ -211,434 +234,275 @@ export default function BillingWorkspace() {
     setPhoneInput(resumedCart.customer?.phone || "");
     setNameInput(resumedCart.customer?.name || "");
     setShowSavedCarts(false);
-    toast({ title: "Cart resumed" });
+    messageApi.success("Cart resumed");
   };
 
   const canProceedToPayment = cart.lines && cart.lines.length > 0;
 
-  return (
-    <div className="flex h-screen bg-background">
-      {/* Left Panel - Customer & Staff */}
-      <div className="w-80 border-r border-border flex flex-col">
-        <div className="sticky top-0 bg-card border-b border-border p-4 space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <RiUserLine className="w-5 h-5" />
-            Customer & Staff
-          </h2>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Phone Number</label>
-            <Input
-              type="tel"
-              placeholder="10-digit phone"
-              value={phoneInput}
-              onChange={(e) => setPhoneInput(e.target.value)}
-              maxLength={10}
-            />
-            {customerSuggestions.length > 0 && (
-              <div className="bg-card border border-border rounded-lg mt-1 max-h-40 overflow-y-auto">
-                {customerSuggestions.map((customer) => (
-                  <button
-                    key={customer.phone}
-                    className="w-full p-2 text-left hover:bg-accent"
-                    onClick={() => handleCustomerSelect(customer)}
-                  >
-                    <div className="font-medium">{customer.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {customer.phone}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+  const columns = [
+    {
+      title: "Item",
+      key: "item",
+      render: (_: any, record: CartLine) => (
+        <Space>
+          {record.imageUrl && (
+            <img src={record.imageUrl} alt={record.name} className="w-12 h-12 object-cover rounded" />
+          )}
+          <div>
+            <div className="font-medium">{record.name}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.sku}
+            </Text>
           </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Name</label>
-            <Input
-              placeholder="Customer name"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-            />
-          </div>
-
+        </Space>
+      ),
+    },
+    {
+      title: "MRP",
+      dataIndex: "mrp",
+      key: "mrp",
+      render: (mrp: number) => `₹${mrp}`,
+    },
+    {
+      title: "Offer",
+      dataIndex: "offerPrice",
+      key: "offerPrice",
+      render: (offerPrice?: number) => (offerPrice ? `₹${offerPrice}` : "-"),
+    },
+    {
+      title: "Qty",
+      key: "qty",
+      render: (_: any, record: CartLine) => (
+        <Space>
           <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSkipCustomer}
-            className="w-full"
-          >
-            Skip / Random Number
-          </Button>
+            size="small"
+            icon={<MinusOutlined />}
+            onClick={() => handleQuantityChange(record.sku, -1)}
+            disabled={record.qty <= 1}
+          />
+          <span className="px-2">{record.qty}</span>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => handleQuantityChange(record.sku, 1)} />
+        </Space>
+      ),
+    },
+    {
+      title: "Total",
+      key: "lineTotal",
+      render: (_: any, record: CartLine) => {
+        const price = record.offerPrice || record.mrp;
+        return `₹${(price * record.qty).toFixed(2)}`;
+      },
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_: any, record: CartLine) => (
+        <Button danger size="small" icon={<DeleteOutlined />} onClick={() => handleRemoveLine(record.sku)} />
+      ),
+    },
+  ];
 
-          <div className="flex gap-2">
-            {cart.customer?.isGuest ? (
-              <Badge variant="secondary">Guest</Badge>
-            ) : cart.customer?.phone ? (
-              <Badge variant="success">Returning</Badge>
-            ) : (
-              <Badge variant="outline">New</Badge>
-            )}
-          </div>
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      {contextHolder}
+      <div className="mx-auto max-w-7xl">
+        <Title level={2}>Billing Workspace</Title>
 
-          <div className="space-y-2 pt-2 border-t">
-            <label className="text-sm font-medium">Staff</label>
-            <select
-              className="flex h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              value={cart.staff?.id}
-              onChange={(e) => {
-                const staff = mockStaff.find((s) => s.id === e.target.value);
-                if (staff) setCart((prev) => ({ ...prev, staff }));
-              }}
-            >
-              {mockStaff.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Center Panel - Cart */}
-      <div className="flex-1 flex flex-col">
-        <div className="border-b border-border p-4">
-          <h1 className="text-2xl font-bold">Billing Workspace</h1>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* Scan Section */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="Enter or scan barcode"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleScanBarcode()}
-              className="flex-1"
-            />
-            <Button size="lg" onClick={handleScanBarcode}>
-              <RiBarcodeLine className="w-5 h-5" />
-              Scan Item
-            </Button>
-          </div>
-
-          {/* Last Scanned */}
-          {lastScanned && (
-            <div className="flex items-center gap-3 p-3 bg-accent rounded-lg">
-              <img
-                src={lastScanned.imageUrl || "/placeholder.svg"}
-                alt={lastScanned.name}
-                className="w-12 h-12 object-cover rounded"
-              />
-              <div className="flex-1">
-                <div className="font-medium">{lastScanned.name}</div>
-                <div className="text-sm text-muted-foreground">
-                  ₹{lastScanned.offerPrice || lastScanned.mrp}
+        <div className="grid grid-cols-12 gap-6 mt-6">
+          {/* LEFT: Customer & Staff */}
+          <div className="col-span-3">
+            <Card title={<><UserOutlined /> Customer & Staff</>} className="sticky top-6">
+              <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <div>
+                  <Text strong>Phone</Text>
+                  <AutoComplete
+                    style={{ width: "100%", marginTop: 8 }}
+                    options={customerSuggestions}
+                    value={phoneInput}
+                    onChange={setPhoneInput}
+                    onSelect={handleCustomerSelect}
+                    placeholder="10-digit phone"
+                    maxLength={10}
+                  />
                 </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  handleRemoveLine(lastScanned.sku);
-                  setLastScanned(null);
-                }}
-              >
-                Undo
-              </Button>
-            </div>
-          )}
 
-          {/* Cart Table */}
-          {cart.lines && cart.lines.length > 0 ? (
-            <div className="border border-border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="p-3 text-left text-sm font-medium">Item</th>
-                    <th className="p-3 text-left text-sm font-medium">SKU</th>
-                    <th className="p-3 text-right text-sm font-medium">MRP</th>
-                    <th className="p-3 text-right text-sm font-medium">Offer</th>
-                    <th className="p-3 text-center text-sm font-medium">Qty</th>
-                    <th className="p-3 text-right text-sm font-medium">Total</th>
-                    <th className="p-3 text-center text-sm font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cart.lines.map((line) => {
-                    const price = line.offerPrice || line.mrp;
-                    const total = price * line.qty;
-                    return (
-                      <tr key={line.sku} className="border-t border-border">
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={line.imageUrl || "/placeholder.svg"}
-                              alt={line.name}
-                              className="w-10 h-10 object-cover rounded"
-                            />
-                            <span className="font-medium">{line.name}</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-sm text-muted-foreground">
-                          {line.sku}
-                        </td>
-                        <td className="p-3 text-right">₹{line.mrp}</td>
-                        <td className="p-3 text-right">
-                          {line.offerPrice ? `₹${line.offerPrice}` : "-"}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleQuantityChange(line.sku, -1)}
-                            >
-                              <RiSubtractLine className="w-4 h-4" />
-                            </Button>
-                            <span className="w-8 text-center font-medium">
-                              {line.qty}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleQuantityChange(line.sku, 1)}
-                            >
-                              <RiAddLine className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-semibold">
-                          ₹{total.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveLine(line.sku)}
-                          >
-                            <RiDeleteBinLine className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="border border-dashed border-border rounded-lg p-12 text-center">
-              <RiBarcodeLine className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-muted-foreground">No items scanned yet</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Scan or enter a barcode to add items
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right Panel - Pricing & Actions */}
-      <div className="w-96 border-l border-border flex flex-col">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <h2 className="text-lg font-semibold">Offers & Discounts</h2>
-
-          {/* Auto Discounts */}
-          {cart.autoDiscounts && cart.autoDiscounts.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Auto Schemes
-              </h3>
-              {cart.autoDiscounts.map((discount) => (
-                <div
-                  key={discount.id}
-                  className="flex items-center justify-between p-2 bg-accent rounded"
-                >
-                  <span className="text-sm">{discount.label}</span>
-                  <Badge variant="success">-₹{discount.amount.toFixed(2)}</Badge>
+                <div>
+                  <Text strong>Name</Text>
+                  <Input
+                    style={{ marginTop: 8 }}
+                    placeholder="Customer name"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                  />
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Manual Discount */}
-          <div className="space-y-3 border-t border-border pt-4">
-            <h3 className="text-sm font-medium">Manual Discount</h3>
-            <div className="space-y-2">
-              <select
-                className="flex h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                value={manualDiscountType}
-                onChange={(e) =>
-                  setManualDiscountType(e.target.value as "AMOUNT" | "PERCENT")
+                <Button block onClick={handleSkipCustomer}>
+                  Skip / Random
+                </Button>
+
+                <div>
+                  <Text strong>Staff</Text>
+                  <Select
+                    style={{ width: "100%", marginTop: 8 }}
+                    value={cart.staff?.id}
+                    onChange={(id) => {
+                      const staff = mockStaff.find((s) => s.id === id);
+                      if (staff) setCart((prev) => ({ ...prev, staff }));
+                    }}
+                  >
+                    {mockStaff.map((s) => (
+                      <Option key={s.id} value={s.id}>
+                        {s.name}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div>
+                  <Badge
+                    color={cart.customer?.isGuest ? "default" : cart.customer?.phone ? "blue" : "green"}
+                    text={cart.customer?.isGuest ? "Guest" : cart.customer?.phone ? "Returning" : "New"}
+                  />
+                </div>
+              </Space>
+            </Card>
+          </div>
+
+          {/* CENTER: Scan & Cart */}
+          <div className="col-span-6">
+            <Space direction="vertical" style={{ width: "100%" }} size="large">
+              <Card title="Scan Item">
+                <Space style={{ width: "100%" }}>
+                  <Button type="primary" size="large" icon={<ScanOutlined />} onClick={handleScanBarcode}>
+                    Scan Item
+                  </Button>
+                  <Input
+                    placeholder="Enter barcode"
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    onPressEnter={handleScanBarcode}
+                    style={{ flex: 1 }}
+                    size="large"
+                  />
+                </Space>
+
+                {lastScanned && (
+                  <Card size="small" style={{ marginTop: 16, backgroundColor: "#f0f0f0" }}>
+                    <Space>
+                      {lastScanned.imageUrl && (
+                        <img src={lastScanned.imageUrl} alt="" className="w-12 h-12 object-cover rounded" />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div className="font-medium">{lastScanned.name}</div>
+                        <Text type="secondary">₹{(lastScanned.offerPrice || lastScanned.mrp).toFixed(2)}</Text>
+                      </div>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          handleRemoveLine(lastScanned.sku);
+                          setLastScanned(null);
+                        }}
+                      >
+                        Undo
+                      </Button>
+                    </Space>
+                  </Card>
+                )}
+              </Card>
+
+              <Card
+                title={
+                  <Space>
+                    <ShoppingCartOutlined />
+                    Cart ({cart.lines?.length || 0} items)
+                  </Space>
                 }
               >
-                <option value="AMOUNT">Flat ₹</option>
-                <option value="PERCENT">%</option>
-              </select>
-              <Input
-                type="number"
-                placeholder="Value"
-                value={manualDiscountValue}
-                onChange={(e) => setManualDiscountValue(e.target.value)}
-              />
-              <Input
-                placeholder="Reason (required)"
-                value={manualDiscountReason}
-                onChange={(e) => setManualDiscountReason(e.target.value)}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddManualDiscount}
-                className="w-full"
-              >
-                Add Discount
-              </Button>
-            </div>
+                {!cart.lines || cart.lines.length === 0 ? (
+                  <Empty description="No items scanned yet" />
+                ) : (
+                  <Table
+                    dataSource={cart.lines}
+                    columns={columns}
+                    rowKey="sku"
+                    pagination={false}
+                    scroll={{ y: 400 }}
+                  />
+                )}
+              </Card>
+            </Space>
+          </div>
 
-            {cart.billManualDiscounts && cart.billManualDiscounts.length > 0 && (
-              <div className="space-y-2 mt-3">
-                {cart.billManualDiscounts.map((discount, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start justify-between p-2 bg-accent rounded text-sm"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {discount.type === "PERCENT"
-                          ? `${discount.value}%`
-                          : `₹${discount.value}`}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {discount.reason}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setCart((prev) => ({
-                          ...prev,
-                          billManualDiscounts: prev.billManualDiscounts?.filter(
-                            (_, i) => i !== idx
-                          ),
-                        }));
-                      }}
-                    >
-                      <RiDeleteBinLine className="w-4 h-4" />
-                    </Button>
+          {/* RIGHT: Price Breakdown */}
+          <div className="col-span-3">
+            <Card title="Price Breakdown" className="sticky top-6">
+              <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <div className="space-y-3 mb-6">
+                  <div className="flex justify-between">
+                    <Text>Subtotal</Text>
+                    <Text strong>₹{cart.subtotal?.toFixed(2) || "0.00"}</Text>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                  <div className="flex justify-between" style={{ color: "#52c41a" }}>
+                    <Text>Total Discount</Text>
+                    <Text>- ₹{cart.totalDiscount?.toFixed(2) || "0.00"}</Text>
+                  </div>
+                  {cart.taxes && (
+                    <div className="flex justify-between">
+                      <Text>Taxes</Text>
+                      <Text>₹{cart.taxes.toFixed(2)}</Text>
+                    </div>
+                  )}
+                  <div className="border-t pt-3 flex justify-between items-center">
+                    <Text strong style={{ fontSize: 16 }}>
+                      Total Payable
+                    </Text>
+                    <Text strong style={{ fontSize: 24 }}>
+                      ₹{cart.totalPayable?.toFixed(2) || "0.00"}
+                    </Text>
+                  </div>
+                </div>
 
-        {/* Price Breakdown - Sticky */}
-        <div className="border-t border-border bg-card p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Price Breakdown</h2>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>₹{cart.subtotal?.toFixed(2) || "0.00"}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Discounts</span>
-              <span className="text-destructive">
-                -₹{cart.totalDiscount?.toFixed(2) || "0.00"}
-              </span>
-            </div>
-            <div className="border-t border-border pt-2 flex justify-between">
-              <span className="font-semibold text-lg">Total Payable</span>
-              <span className="font-bold text-2xl">
-                ₹{cart.totalPayable?.toFixed(2) || "0.00"}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2 pt-2">
-            <Button
-              size="xl"
-              className="w-full"
-              disabled={!canProceedToPayment}
-              onClick={() => setShowPaymentModal(true)}
-            >
-              Proceed to Payment
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowSaveModal(true)}
-                disabled={!canProceedToPayment}
-              >
-                <RiSave3Line className="w-4 h-4" />
-                Save Cart
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowSavedCarts(true)}
-              >
-                Saved Carts
-              </Button>
-            </div>
+                <Space direction="vertical" style={{ width: "100%" }}>
+                  <Button
+                    type="primary"
+                    size="large"
+                    block
+                    icon={<DollarOutlined />}
+                    onClick={() => setShowPaymentModal(true)}
+                    disabled={!canProceedToPayment}
+                  >
+                    Proceed to Payment
+                  </Button>
+                  <Button
+                    size="large"
+                    block
+                    icon={<SaveOutlined />}
+                    onClick={() => setShowSaveModal(true)}
+                    disabled={!canProceedToPayment}
+                  >
+                    Save Cart
+                  </Button>
+                  <Button block onClick={() => setShowSavedCarts(true)}>
+                    View Saved Carts
+                  </Button>
+                </Space>
+              </Space>
+            </Card>
           </div>
         </div>
       </div>
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
+      {showPaymentModal && cart && (
         <PaymentModal
           cart={cart as Cart}
           onClose={() => setShowPaymentModal(false)}
-          onSuccess={(invoiceId) => {
-            setShowPaymentModal(false);
-            navigate(`/billing/invoice/${invoiceId}`);
-          }}
+          onSuccess={(invoiceId) => navigate(`/billing/invoice/${invoiceId}`)}
         />
       )}
 
-      {/* Save Cart Modal */}
-      <Modal.Root open={showSaveModal} onOpenChange={setShowSaveModal}>
-        <Modal.Content>
-          <Modal.Header>
-            <Modal.Title>Save Cart</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Cart Label</label>
-                <Input
-                  placeholder="e.g., Cart for Rajesh"
-                  value={saveLabel}
-                  onChange={(e) => setSaveLabel(e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Customer: {cart.customer?.name || "Guest"}
-                <br />
-                Items: {cart.lines?.length || 0}
-                <br />
-                Total: ₹{cart.totalPayable?.toFixed(2) || "0.00"}
-              </div>
-            </div>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="outline" onClick={() => setShowSaveModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveCart}>Save Cart</Button>
-          </Modal.Footer>
-        </Modal.Content>
-      </Modal.Root>
-
-      {/* Saved Carts Drawer */}
       {showSavedCarts && (
         <SavedCartsDrawer
+          open={showSavedCarts}
           onClose={() => setShowSavedCarts(false)}
           onResume={handleResumeCart}
         />
